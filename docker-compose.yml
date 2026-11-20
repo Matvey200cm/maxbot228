@@ -24,8 +24,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      BOT_TOKEN: ${BOT_TOKEN}
-      BOT_ADMIN_ID: ${BOT_ADMIN_ID:-0}
+      MAX_API_TOKEN: ${MAX_API_TOKEN}
+      MAX_API_URL: ${MAX_API_URL:-https://api.max.ru}
       DATABASE_URL: postgresql+asyncpg://maxbot:maxbot_password@postgres:5432/maxbot_db
       API_HOST: 0.0.0.0
       API_PORT: 8000
@@ -39,8 +39,8 @@ services:
     build: .
     container_name: maxbot_bot
     environment:
-      BOT_TOKEN: ${BOT_TOKEN}
-      BOT_ADMIN_ID: ${BOT_ADMIN_ID:-0}
+      MAX_API_TOKEN: ${MAX_API_TOKEN}
+      MAX_API_URL: ${MAX_API_URL:-https://api.max.ru}
       DATABASE_URL: postgresql+asyncpg://maxbot:maxbot_password@postgres:5432/maxbot_db
       API_HOST: 0.0.0.0
       API_PORT: 8000

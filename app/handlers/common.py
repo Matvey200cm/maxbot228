@@ -1,5 +1,5 @@
-from aiogram.types import Message
-from aiogram.fsm.context import FSMContext
+from maxapi.types import Message
+from maxapi.fsm.context import FSMContext
 
 from app.keyboards import get_main_kb
 

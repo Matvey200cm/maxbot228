@@ -20,7 +20,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    max_user_id = Column(String(100), unique=True, nullable=False, index=True)
     username = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 

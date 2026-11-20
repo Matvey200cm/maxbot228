@@ -13,13 +13,13 @@ class LabStatusEnum(str, Enum):
 
 # ============ User ============
 class UserCreate(BaseModel):
-    telegram_id: int
+    max_user_id: str
     username: Optional[str] = None
 
 
 class UserOut(BaseModel):
     id: int
-    telegram_id: int
+    max_user_id: str
     username: Optional[str]
     created_at: datetime
 

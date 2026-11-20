@@ -1,6 +1,6 @@
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
+from maxapi import Router, F
+from maxapi.types import Message, CallbackQuery
+from maxapi.filters import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone, timedelta
@@ -105,6 +105,6 @@ async def callback_reminders(callback: CallbackQuery, db: AsyncSession):
     await callback.answer()
 
 
-async def _get_user(telegram_id: int, db: AsyncSession):
-    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+async def _get_user(max_user_id: str, db: AsyncSession):
+    result = await db.execute(select(User).where(User.max_user_id == max_user_id))
     return result.scalar_one_or_none()

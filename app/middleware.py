@@ -1,7 +1,7 @@
 from typing import Any, Awaitable, Callable, Dict
 
-from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
+from maxapi import BaseMiddleware
+from maxapi.types import TelegramObject
 
 from app.database import async_session
 
