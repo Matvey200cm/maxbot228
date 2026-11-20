@@ -1,11 +1,11 @@
 # MaxBot 🤖
 
-Бот для подготовки к экзаменам и управления лабораторными работами.
+Бот для подготовки к экзаменам и управления лабораторными работами в мессенджере Max.
 
 ## Стек технологий
 
 - **FastAPI** — REST API
-- **aiogram 3** — Telegram бот
+- **maxapi** — Max мессенджер бот
 - **PostgreSQL** — база данных
 - **SQLAlchemy** — ORM
 - **APScheduler** — напоминания
@@ -26,7 +26,7 @@
 
 ### 📝 Тесты / Викторины
 - Создание тестов с вопросами (4 варианта ответа)
-- Прохождение тестов прямо в Telegram
+- Прохождение тестов прямо в Max
 - Подсчёт результатов и оценка
 
 ### 🔔 Напоминания
@@ -44,11 +44,11 @@ copy .env.example .env
 
 ### 2. Настроить .env
 
-Откройте `.env` и вставьте токен бота от @BotFather:
+Откройте `.env` и вставьте токен бота из панели разработчиков Max:
 
 ```
-BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz
-BOT_ADMIN_ID=0
+MAX_API_TOKEN=your_max_bot_token_here
+MAX_API_URL=https://api.max.ru
 DATABASE_URL=postgresql+asyncpg://maxbot:maxbot_password@localhost:5432/maxbot_db
 ```
 

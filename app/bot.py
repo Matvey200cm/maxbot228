@@ -1,29 +1,19 @@
-from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.utils.token import TokenValidationError
+from maxapi import Bot, Dispatcher, BotProperties
+from maxapi.types import ParseMode
 
 from app.config import get_settings
 from app.middleware import DbSessionMiddleware
 
 settings = get_settings()
 
-if settings.bot_token in ("", "your_telegram_bot_token_here"):
+if settings.max_api_token in ("", "your_max_bot_token_here"):
     raise SystemExit(
-        "\n❌ BOT_TOKEN не настроен.\n"
-        "Получите токен у @BotFather (команда /newbot) и вставьте его в файл .env:\n"
-        "BOT_TOKEN=123456789:AA...\n"
+        "\n❌ MAX_API_TOKEN не настроен.\n"
+        "Получите токен в панели разработчиков Max и вставьте его в файл .env:\n"
+        "MAX_API_TOKEN=your_token_here\n"
     )
 
-try:
-    session = AiohttpSession(proxy=settings.proxy_url or None)
-    bot = Bot(token=settings.bot_token, default=DefaultBotProperties(parse_mode="HTML"), session=session)
-except TokenValidationError:
-    raise SystemExit(
-        "\n❌ BOT_TOKEN неверного формата. Проверьте токен в файле .env.\n"
-        "Получить токен: @BotFather → /newbot → скопировать 'HTTP API'.\n"
-    )
-
+bot = Bot(token=settings.max_api_token, api_url=settings.max_api_url, default=BotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 # Сессия БД на каждый апдейт (параметр `db` в хендлерах)

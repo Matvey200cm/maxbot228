@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from maxapi.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def get_exam_kb(exam_id: int):

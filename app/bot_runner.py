@@ -9,6 +9,8 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
+from maxapi import Bot
+
 from app.bot import bot, dp
 from app.database import async_session, init_db
 from app.models import User, Exam, LabWork, ensure_utc
@@ -29,7 +31,7 @@ async def check_reminders():
     async with async_session() as db:
         # Exams due within 24h
         exams_result = await db.execute(
-            select(Exam, User.telegram_id)
+            select(Exam, User.max_user_id)
             .join(User, User.id == Exam.user_id)
             .where(
                 Exam.date != None,
@@ -39,11 +41,11 @@ async def check_reminders():
                 Exam.reminder_sent_at == None,
             )
         )
-        for exam, telegram_id in exams_result.all():
+        for exam, max_user_id in exams_result.all():
             hours_left = (ensure_utc(exam.date) - now).total_seconds() / 3600
             try:
                 await bot.send_message(
-                    telegram_id,
+                    max_user_id,
                     f"⏰ <b>Напоминание!</b>\n\n"
                     f"📚 {exam.subject}\n"
                     f"📝 {exam.topic}\n"
@@ -51,13 +53,13 @@ async def check_reminders():
                 )
                 exam.reminder_sent_at = now
                 await db.commit()
-                logger.info(f"Reminder sent for exam {exam.id} to telegram_id {telegram_id}")
+                logger.info(f"Reminder sent for exam {exam.id} to max_user_id {max_user_id}")
             except Exception as e:
                 logger.error(f"Failed to send exam reminder: {e}")
 
         # Labs due within 24h
         labs_result = await db.execute(
-            select(LabWork, User.telegram_id)
+            select(LabWork, User.max_user_id)
             .join(User, User.id == LabWork.user_id)
             .where(
                 LabWork.deadline != None,
@@ -67,11 +69,11 @@ async def check_reminders():
                 LabWork.reminder_sent_at == None,
             )
         )
-        for lab, telegram_id in labs_result.all():
+        for lab, max_user_id in labs_result.all():
             hours_left = (ensure_utc(lab.deadline) - now).total_seconds() / 3600
             try:
                 await bot.send_message(
-                    telegram_id,
+                    max_user_id,
                     f"⏰ <b>Напоминание!</b>\n\n"
                     f"🔬 #{lab.lab_number} {lab.title}\n"
                     f"📚 {lab.subject}\n"
@@ -79,7 +81,7 @@ async def check_reminders():
                 )
                 lab.reminder_sent_at = now
                 await db.commit()
-                logger.info(f"Reminder sent for lab {lab.id} to telegram_id {telegram_id}")
+                logger.info(f"Reminder sent for lab {lab.id} to max_user_id {max_user_id}")
             except Exception as e:
                 logger.error(f"Failed to send lab reminder: {e}")
 

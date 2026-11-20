@@ -1,8 +1,8 @@
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
+from maxapi import Router, F
+from maxapi.types import Message, CallbackQuery
+from maxapi.filters import Command, StateFilter
+from maxapi.fsm.context import FSMContext
+from maxapi.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
@@ -33,7 +33,7 @@ async def cmd_lab_add(message: Message, state: FSMContext, db: AsyncSession):
 
 
 @router.message(Command("lab_list"))
-async def cmd_lab_list(message: Message, db: AsyncSession, user_id: int | None = None):
+async def cmd_lab_list(message: Message, db: AsyncSession, user_id: str | None = None):
     user = await _get_user(user_id or message.from_user.id, db)
     if not user:
         await message.answer("Сначала введите /start.")
@@ -216,6 +216,6 @@ async def lab_callback_handler(callback: CallbackQuery, db: AsyncSession):
     await callback.answer()
 
 
-async def _get_user(telegram_id: int, db: AsyncSession):
-    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
+async def _get_user(max_user_id: str, db: AsyncSession):
+    result = await db.execute(select(User).where(User.max_user_id == max_user_id))
     return result.scalar_one_or_none()

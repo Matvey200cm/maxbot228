@@ -1,6 +1,6 @@
-from aiogram import Router
-from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from maxapi import Router
+from maxapi.filters import CommandStart, Command
+from maxapi.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,10 +13,10 @@ router = Router()
 @router.message(CommandStart())
 async def cmd_start(message: Message, db: AsyncSession):
     # Регистрация пользователя, если его ещё нет в БД
-    result = await db.execute(select(User).where(User.telegram_id == message.from_user.id))
+    result = await db.execute(select(User).where(User.max_user_id == message.from_user.id))
     user = result.scalar_one_or_none()
     if not user:
-        db.add(User(telegram_id=message.from_user.id, username=message.from_user.username))
+        db.add(User(max_user_id=message.from_user.id, username=message.from_user.username))
         await db.commit()
 
     await message.answer(
