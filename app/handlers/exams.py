@@ -1,16 +1,14 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
-from app.bot import bot
-from app.database import get_db
 from app.models import User, Exam, ExamTopic
-from app.schemas import ExamCreate
-from app.keyboards import get_exam_kb, get_main_kb, get_pagination_kb
+from app.handlers.common import handle_command_while_input
+from app.keyboards import get_exam_kb, get_main_kb
 
 router = Router()
 
@@ -23,7 +21,7 @@ class ExamFSM(StatesGroup):
     waiting_topic_name = State()
 
 
-@router.command("exam_add")
+@router.message(Command("exam_add"))
 async def cmd_exam_add(message: Message, state: FSMContext, db: AsyncSession):
     user = await _get_user(message.from_user.id, db)
     if not user:
@@ -34,9 +32,9 @@ async def cmd_exam_add(message: Message, state: FSMContext, db: AsyncSession):
     await message.answer("📚 Введите название предмета:")
 
 
-@router.command("exam_list")
-async def cmd_exam_list(message: Message, db: AsyncSession):
-    user = await _get_user(message.from_user.id, db)
+@router.message(Command("exam_list"))
+async def cmd_exam_list(message: Message, db: AsyncSession, user_id: int | None = None):
+    user = await _get_user(user_id or message.from_user.id, db)
     if not user:
         await message.answer("Сначала введите /start.")
         return
@@ -59,14 +57,24 @@ async def cmd_exam_list(message: Message, db: AsyncSession):
 
 
 @router.message(ExamFSM.waiting_subject)
-async def msg_exam_subject(message: Message, state: FSMContext, db: AsyncSession):
+async def msg_exam_subject(message: Message, state: FSMContext):
+    if await handle_command_while_input(message, state, cancel_text="Добавление экзамена отменено."):
+        return
+    if not message.text:
+        await message.answer("❌ Введите название предмета текстом.")
+        return
     await state.update_data(subject=message.text)
     await message.answer("✏️ Введите тему/раздел экзамена:")
     await state.set_state(ExamFSM.waiting_topic)
 
 
 @router.message(ExamFSM.waiting_topic)
-async def msg_exam_topic(message: Message, state: FSMContext, db: AsyncSession):
+async def msg_exam_topic(message: Message, state: FSMContext):
+    if await handle_command_while_input(message, state, cancel_text="Добавление экзамена отменено."):
+        return
+    if not message.text:
+        await message.answer("❌ Введите тему текстом.")
+        return
     await state.update_data(topic=message.text)
     await message.answer(
         "📅 Введите дату экзамена (необязательно).\n"
@@ -78,47 +86,72 @@ async def msg_exam_topic(message: Message, state: FSMContext, db: AsyncSession):
 
 @router.message(ExamFSM.waiting_date)
 async def msg_exam_date(message: Message, state: FSMContext, db: AsyncSession):
-    if message.text and message.text.lower() == "/skip":
+    if not message.text:
+        await message.answer("❌ Введите дату в формате ДД.ММ.ГГГГ ЧЧ:ММ или /skip")
+        return
+
+    if message.text.lower() == "/skip":
         data = await state.get_data()
         await _save_exam(message, data, db, None, None)
         await state.clear()
         return
 
     try:
-        date = datetime.strptime(message.text, "%d.%m.%Y %H:%M")
+        if " " in message.text:
+            date = datetime.strptime(message.text, "%d.%m.%Y %H:%M")
+        else:
+            date = datetime.strptime(message.text, "%d.%m.%Y")
         date = date.replace(tzinfo=timezone.utc)
     except ValueError:
-        try:
-            date = datetime.strptime(message.text, "%d.%m.%Y")
-            date = date.replace(tzinfo=timezone.utc)
-        except ValueError:
-            await message.answer("❌ Неверный формат. Попробуйте ДД.ММ.ГГГЧ ЧЧ:ММ или /skip")
-            return
+        await message.answer("❌ Неверный формат. Попробуйте ДД.ММ.ГГГГ ЧЧ:ММ или /skip")
+        return
 
+    await state.update_data(date=date)
+    await state.set_state(ExamFSM.waiting_description)
+    await message.answer("📄 Введите описание (необязательно) или /skip:")
+
+
+@router.message(ExamFSM.waiting_description)
+async def msg_exam_description(message: Message, state: FSMContext, db: AsyncSession):
     data = await state.get_data()
-    await _save_exam(message, data, db, date, None)
+    description = None
+    if message.text and message.text.strip().lower() != "/skip":
+        description = message.text
+    await _save_exam(message, data, db, data.get("date"), description)
     await state.clear()
 
 
-@router.message(Command("skip"))
-async def cmd_skip(message: Message, state: FSMContext):
-    data = await state.get_data()
-    await _save_exam(message, data, db=None, date=None, description=None)
+@router.message(Command("skip"), StateFilter(ExamFSM))
+async def cmd_skip_fsm(message: Message, state: FSMContext):
     await state.clear()
+    await message.answer("❌ Добавление экзамена отменено.", reply_markup=get_main_kb())
+
+
+@router.message(ExamFSM.waiting_topic_name)
+async def msg_exam_topic_name(message: Message, state: FSMContext, db: AsyncSession):
+    data = await state.get_data()
+    exam_id = data.get("exam_id")
+    if not exam_id or not message.text:
+        await state.clear()
+        await message.answer("❌ Не удалось добавить тему.", reply_markup=get_main_kb())
+        return
+
+    db.add(ExamTopic(exam_id=exam_id, topic_name=message.text))
+    await db.commit()
+    await state.clear()
+    await message.answer(f"✅ Тема «{message.text}» добавлена!", reply_markup=get_exam_kb(exam_id))
 
 
 async def _save_exam(message: Message, data: dict, db: AsyncSession, date, description):
-    exam_data = ExamCreate(
-        subject=data["subject"],
-        topic=data["topic"],
-        date=date,
-        description=description,
-    )
     user = await _get_user(message.from_user.id, db)
+    if not user:
+        await message.answer("Сначала введите /start для регистрации.")
+        return
+
     exam = Exam(
         user_id=user.id,
-        subject=exam_data.subject,
-        topic=exam_data.topic,
+        subject=data["subject"],
+        topic=data["topic"],
         date=date,
         description=description,
     )
@@ -136,42 +169,33 @@ async def _save_exam(message: Message, data: dict, db: AsyncSession, date, descr
     )
 
 
-@router.message(ExamFSM.waiting_description)
-async def msg_exam_description(message: Message, state: FSMContext, db: AsyncSession):
-    data = await state.get_data()
-    await _save_exam(message, data, db, None, message.text)
-    await state.clear()
-
-
-@router.message(lambda c: c.text and c.text.startswith("/skip"))
-async def cmd_skip_fsm(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("❌ Добавление экзамена отменено.", reply_markup=get_main_kb())
-
-
 # ============ Callback handlers ============
-@router.callback_query(lambda c: c.data and c.data.startswith("exam_"))
+@router.callback_query(F.data == "menu_exams")
+async def cb_menu_exams(callback: CallbackQuery, db: AsyncSession):
+    await cmd_exam_list(callback.message, db, callback.from_user.id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("exam_"))
 async def exam_callback_handler(callback: CallbackQuery, db: AsyncSession, state: FSMContext):
     data = callback.data
 
-    if data == "menu_exams":
-        await callback.message.edit_text("📚 Раздел экзаменов:", reply_markup=get_main_kb())
-        return
-
     if data == "exams_list":
-        await cmd_exam_list(callback.message, db)
+        await cmd_exam_list(callback.message, db, callback.from_user.id)
+        await callback.answer()
         return
 
     # exam_topic_add_{id}
     if data.startswith("exam_topic_add_"):
-        exam_id = int(data.split("_")[-1])
+        exam_id = int(data.rsplit("_", 1)[-1])
         await state.set_state(ExamFSM.waiting_topic_name)
         await state.update_data(exam_id=exam_id)
         await callback.message.answer("📝 Введите название новой темы:")
+        await callback.answer()
         return
 
     if data.startswith("exam_topics_"):
-        exam_id = int(data.split("_")[-1])
+        exam_id = int(data.rsplit("_", 1)[-1])
         result = await db.execute(select(ExamTopic).where(ExamTopic.exam_id == exam_id))
         topics = result.scalars().all()
 
@@ -194,12 +218,12 @@ async def exam_callback_handler(callback: CallbackQuery, db: AsyncSession, state
             text += "  (нет тем)\n"
 
         text += f"\nПрогресс: {exam.progress:.0f}%"
-        await callback.message.edit_text(text)
+        await callback.message.edit_text(text, reply_markup=get_exam_kb(exam_id))
         await callback.answer()
         return
 
     if data.startswith("exam_complete_"):
-        exam_id = int(data.split("_")[-1])
+        exam_id = int(data.rsplit("_", 1)[-1])
         result = await db.execute(select(Exam).where(Exam.id == exam_id))
         exam = result.scalar_one_or_none()
         if exam:
@@ -207,18 +231,18 @@ async def exam_callback_handler(callback: CallbackQuery, db: AsyncSession, state
             await db.commit()
             status = "✅ Завершён" if exam.is_completed else "🔥 В процессе"
             await callback.answer(status)
-            await cmd_exam_list(callback.message, db)
+            await cmd_exam_list(callback.message, db, callback.from_user.id)
         return
 
     if data.startswith("exam_delete_"):
-        exam_id = int(data.split("_")[-1])
+        exam_id = int(data.rsplit("_", 1)[-1])
         result = await db.execute(select(Exam).where(Exam.id == exam_id))
         exam = result.scalar_one_or_none()
         if exam:
             await db.delete(exam)
             await db.commit()
             await callback.answer("🗑 Экзамен удалён")
-            await cmd_exam_list(callback.message, db)
+            await cmd_exam_list(callback.message, db, callback.from_user.id)
         return
 
     await callback.answer()

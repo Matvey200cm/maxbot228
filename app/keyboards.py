@@ -58,13 +58,14 @@ def get_tests_kb(test_id: int):
 
 def get_answer_kb(question_id: int, answers: list):
     """Клавиатура для ответов в тесте"""
-    buttons = []
     labels = ["a", "b", "c", "d"]
-    for i, label in enumerate(labels):
-        if i < len(answers):
-            buttons.append(
-                InlineKeyboardButton(text=f"{labels[i]}. {answers[i]}", callback_data=f"answer_{question_id}_{labels[i]}")
-            )
+    buttons = []
+    for i, answer in enumerate(answers):
+        if not answer:
+            continue
+        buttons.append(
+            InlineKeyboardButton(text=f"{labels[i]}. {answer}", callback_data=f"answer_{question_id}_{labels[i]}")
+        )
     kb = [buttons]
     kb.append([InlineKeyboardButton(text="⬅ Пропустить", callback_data=f"answer_skip_{question_id}")])
     return InlineKeyboardMarkup(inline_keyboard=kb)

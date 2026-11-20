@@ -1,16 +1,14 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
-from app.bot import bot
-from app.database import get_db
 from app.models import User, LabWork
-from app.schemas import LabWorkCreate
-from app.keyboards import get_labs_kb, get_main_kb, get_pagination_kb
+from app.handlers.common import handle_command_while_input
+from app.keyboards import get_labs_kb, get_main_kb
 
 router = Router()
 
@@ -23,7 +21,7 @@ class LabFSM(StatesGroup):
     waiting_description = State()
 
 
-@router.command("lab_add")
+@router.message(Command("lab_add"))
 async def cmd_lab_add(message: Message, state: FSMContext, db: AsyncSession):
     user = await _get_user(message.from_user.id, db)
     if not user:
@@ -34,9 +32,9 @@ async def cmd_lab_add(message: Message, state: FSMContext, db: AsyncSession):
     await message.answer("🔬 Введите название предмета:")
 
 
-@router.command("lab_list")
-async def cmd_lab_list(message: Message, db: AsyncSession):
-    user = await _get_user(message.from_user.id, db)
+@router.message(Command("lab_list"))
+async def cmd_lab_list(message: Message, db: AsyncSession, user_id: int | None = None):
+    user = await _get_user(user_id or message.from_user.id, db)
     if not user:
         await message.answer("Сначала введите /start.")
         return
@@ -73,14 +71,24 @@ async def cmd_lab_list(message: Message, db: AsyncSession):
 
 
 @router.message(LabFSM.waiting_subject)
-async def msg_lab_subject(message: Message, state: FSMContext, db: AsyncSession):
+async def msg_lab_subject(message: Message, state: FSMContext):
+    if await handle_command_while_input(message, state, cancel_text="Добавление лабораторной отменено."):
+        return
+    if not message.text:
+        await message.answer("❌ Введите название предмета текстом.")
+        return
     await state.update_data(subject=message.text)
     await message.answer("🔢 Введите номер лабораторной:")
     await state.set_state(LabFSM.waiting_number)
 
 
 @router.message(LabFSM.waiting_number)
-async def msg_lab_number(message: Message, state: FSMContext, db: AsyncSession):
+async def msg_lab_number(message: Message, state: FSMContext):
+    if await handle_command_while_input(message, state, cancel_text="Добавление лабораторной отменено."):
+        return
+    if not message.text:
+        await message.answer("❌ Введите число:")
+        return
     try:
         num = int(message.text)
         if num < 1:
@@ -96,7 +104,12 @@ async def msg_lab_number(message: Message, state: FSMContext, db: AsyncSession):
 
 
 @router.message(LabFSM.waiting_title)
-async def msg_lab_title(message: Message, state: FSMContext, db: AsyncSession):
+async def msg_lab_title(message: Message, state: FSMContext):
+    if await handle_command_while_input(message, state, cancel_text="Добавление лабораторной отменено."):
+        return
+    if not message.text:
+        await message.answer("❌ Введите название текстом.")
+        return
     await state.update_data(title=message.text)
     await message.answer(
         "📅 Введите дедлайн (необязательно).\n"
@@ -108,7 +121,11 @@ async def msg_lab_title(message: Message, state: FSMContext, db: AsyncSession):
 
 @router.message(LabFSM.waiting_deadline)
 async def msg_lab_deadline(message: Message, state: FSMContext, db: AsyncSession):
-    if message.text and message.text.lower() == "/skip":
+    if not message.text:
+        await message.answer("❌ Введите дату в формате ДД.ММ.ГГГГ ЧЧ:ММ или /skip")
+        return
+
+    if message.text.lower() == "/skip":
         data = await state.get_data()
         await _save_lab(message, data, db, None)
         await state.clear()
@@ -128,8 +145,18 @@ async def msg_lab_deadline(message: Message, state: FSMContext, db: AsyncSession
     await state.clear()
 
 
+@router.message(Command("skip"), StateFilter(LabFSM))
+async def cmd_skip_lab(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Добавление лабораторной отменено.", reply_markup=get_main_kb())
+
+
 async def _save_lab(message: Message, data: dict, db: AsyncSession, deadline):
     user = await _get_user(message.from_user.id, db)
+    if not user:
+        await message.answer("Сначала введите /start для регистрации.")
+        return
+
     lab = LabWork(
         user_id=user.id,
         subject=data["subject"],
@@ -152,23 +179,25 @@ async def _save_lab(message: Message, data: dict, db: AsyncSession, deadline):
 
 
 # ============ Callback handlers ============
-@router.callback_query(lambda c: c.data and c.data.startswith("lab_"))
+@router.callback_query(F.data == "menu_labs")
+async def cb_menu_labs(callback: CallbackQuery, db: AsyncSession):
+    await cmd_lab_list(callback.message, db, callback.from_user.id)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lab_"))
 async def lab_callback_handler(callback: CallbackQuery, db: AsyncSession):
     data = callback.data
 
-    if data == "menu_labs":
-        await callback.message.edit_text("🔬 Раздел лабораторных:", reply_markup=get_main_kb())
-        return
-
     if data == "labs_list":
-        await cmd_lab_list(callback.message, db)
+        await cmd_lab_list(callback.message, db, callback.from_user.id)
+        await callback.answer()
         return
 
     # lab_status_{id}_{status}
     if data.startswith("lab_status_"):
-        parts = data.split("_")
-        lab_id = int(parts[2])
-        status = parts[3]
+        _, _, lab_id_str, status = data.split("_", 3)
+        lab_id = int(lab_id_str)
 
         result = await db.execute(select(LabWork).where(LabWork.id == lab_id))
         lab = result.scalar_one_or_none()
@@ -181,7 +210,7 @@ async def lab_callback_handler(callback: CallbackQuery, db: AsyncSession):
                 "completed": "✅ Выполнено",
             }
             await callback.answer(status_text.get(status, status))
-            await cmd_lab_list(callback.message, db)
+            await cmd_lab_list(callback.message, db, callback.from_user.id)
         return
 
     await callback.answer()

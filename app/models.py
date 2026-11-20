@@ -5,13 +5,24 @@ from datetime import datetime, timezone
 Base = declarative_base()
 
 
+def utcnow():
+    return datetime.now(timezone.utc)
+
+
+def ensure_utc(dt: datetime) -> datetime:
+    """Возвращает datetime с tzinfo=UTC (Postgres отдаёт aware, SQLite — naive)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     telegram_id = Column(Integer, unique=True, nullable=False, index=True)
     username = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     exams = relationship("Exam", back_populates="user", cascade="all, delete-orphan")
     labs = relationship("LabWork", back_populates="user", cascade="all, delete-orphan")
@@ -25,11 +36,12 @@ class Exam(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     subject = Column(String(200), nullable=False)
     topic = Column(String(500), nullable=False)
-    date = Column(DateTime, nullable=True)
+    date = Column(DateTime(timezone=True), nullable=True)
     description = Column(Text, nullable=True)
     progress = Column(Float, default=0.0)  # 0.0 - 100.0
     is_completed = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="exams")
     topics = relationship("ExamTopic", back_populates="exam", cascade="all, delete-orphan")
@@ -42,7 +54,7 @@ class ExamTopic(Base):
     exam_id = Column(Integer, ForeignKey("exams.id"), nullable=False)
     topic_name = Column(String(500), nullable=False)
     is_ready = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     exam = relationship("Exam", back_populates="topics")
 
@@ -55,10 +67,11 @@ class LabWork(Base):
     subject = Column(String(200), nullable=False)
     lab_number = Column(Integer, nullable=False)
     title = Column(String(500), nullable=False)
-    deadline = Column(DateTime, nullable=True)
+    deadline = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), default="pending")  # pending, in_progress, completed, overdue
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="labs")
 
@@ -70,9 +83,8 @@ class Test(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     subject = Column(String(200), nullable=False)
     title = Column(String(500), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
-    user = relationship("User", back_populates=None)
     questions = relationship("Question", back_populates="test", cascade="all, delete-orphan")
 
 
@@ -87,7 +99,7 @@ class Question(Base):
     option_c = Column(String(500), nullable=True)
     option_d = Column(String(500), nullable=True)
     correct_answer = Column(String(10), nullable=False)  # a, b, c, d
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     test = relationship("Test", back_populates="questions")
     results = relationship("TestResult", back_populates="question", cascade="all, delete-orphan")
@@ -102,7 +114,7 @@ class TestResult(Base):
     question_id = Column(Integer, ForeignKey("questions.id"), nullable=True)
     selected_answer = Column(String(10), nullable=False)
     is_correct = Column(Boolean, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", back_populates="tests_taken")
     question = relationship("Question", back_populates="results")

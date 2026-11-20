@@ -1,14 +1,24 @@
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
-from app.bot import bot
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.keyboards import get_main_kb
+from app.models import User
 
 router = Router()
 
 
-@router.command(CommandStart())
-async def cmd_start(message: Message):
+@router.message(CommandStart())
+async def cmd_start(message: Message, db: AsyncSession):
+    # Регистрация пользователя, если его ещё нет в БД
+    result = await db.execute(select(User).where(User.telegram_id == message.from_user.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        db.add(User(telegram_id=message.from_user.id, username=message.from_user.username))
+        await db.commit()
+
     await message.answer(
         "👋 <b>Привет, Max!</b>\n\n"
         "Я бот для подготовки к экзаменам и управления лабораторными работами.\n\n"
@@ -21,22 +31,20 @@ async def cmd_start(message: Message):
     )
 
 
-@router.command("help")
+@router.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
         "<b>/start</b> — начать работу\n"
         "<b>/help</b> — показать справку\n\n"
         "<b>Экзамены:</b>\n"
         "<b>/exam_add</b> — добавить экзамен\n"
-        "<b>/exam_list</b> — список экзаменов\n"
-        "<b>/exam_topics</b> — темы экзамена\n\n"
+        "<b>/exam_list</b> — список экзаменов\n\n"
         "<b>Лабораторные:</b>\n"
         "<b>/lab_add</b> — добавить лабораторную\n"
         "<b>/lab_list</b> — список лабораторных\n\n"
         "<b>Тесты:</b>\n"
         "<b>/test_create</b> — создать тест\n"
-        "<b>/test_list</b> — список тестов\n"
-        "<b>/test_start</b> — начать тест\n\n"
+        "<b>/test_list</b> — список тестов\n\n"
         "<b>Напоминания:</b>\n"
         "<b>/reminders</b> — список напоминаний\n"
     )

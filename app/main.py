@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Позволяет запускать и как `uvicorn app.main:app`, и как `python app/main.py`
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -61,7 +67,11 @@ async def update_exam(exam_id: int, exam: ExamUpdate, db: AsyncSession = Depends
     db_exam = result.scalar_one_or_none()
     if not db_exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    for key, value in exam.model_dump(exclude_unset=True).items():
+    updates = exam.model_dump(exclude_unset=True)
+    if "date" in updates:
+        # Дата изменилась — разрешаем отправить напоминание заново
+        db_exam.reminder_sent_at = None
+    for key, value in updates.items():
         setattr(db_exam, key, value)
     await db.commit()
     await db.refresh(db_exam)

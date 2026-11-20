@@ -1,18 +1,15 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone, timedelta
-from app.bot import bot
-from app.database import get_db
-from app.models import User, Exam, LabWork
-from app.keyboards import get_main_kb
+from app.models import User, Exam, LabWork, ensure_utc
 
 router = Router()
 
 
-@router.command("reminders")
+@router.message(Command("reminders"))
 async def cmd_reminders(message: Message, db: AsyncSession):
     user = await _get_user(message.from_user.id, db)
     if not user:
@@ -54,14 +51,14 @@ async def cmd_reminders(message: Message, db: AsyncSession):
         if exams:
             text += "<b>📚 Экзамены:</b>\n"
             for exam in exams:
-                hours_left = (exam.date - now).total_seconds() / 3600
+                hours_left = (ensure_utc(exam.date) - now).total_seconds() / 3600
                 text += f"  ⏰ {exam.subject} — через {hours_left:.0f} ч\n"
             text += "\n"
 
         if labs:
             text += "<b>🔬 Лабораторные:</b>\n"
             for lab in labs:
-                hours_left = (lab.deadline - now).total_seconds() / 3600
+                hours_left = (ensure_utc(lab.deadline) - now).total_seconds() / 3600
                 text += f"  ⏰ #{lab.lab_number} {lab.title} — через {hours_left:.0f} ч\n"
             text += "\n"
 
@@ -102,9 +99,9 @@ async def cmd_reminders(message: Message, db: AsyncSession):
     await message.answer(text)
 
 
-@router.callback_query(lambda c: c.data and c.data == "menu_reminders")
-async def callback_reminders(callback: CallbackQuery):
-    await callback.message.edit_text("🔔 Раздел напоминаний:", reply_markup=get_main_kb())
+@router.callback_query(F.data == "menu_reminders")
+async def callback_reminders(callback: CallbackQuery, db: AsyncSession):
+    await cmd_reminders(callback.message, db)
     await callback.answer()
 
 
